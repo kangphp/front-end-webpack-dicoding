@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Aplikasi Berbagi Cerita">
+    <!-- Tambahkan link ke manifest.json -->
+    <link rel="manifest" href="manifest.json">
+    <!-- Tambahkan theme-color -->
+    <meta name="theme-color" content="#2c3e50"> <!-- Sesuaikan dengan theme_color di manifest -->
+    <title>Berbagi Cerita</title>
+    <!-- CSS Leaflet sudah diimpor via JS di app.js, jadi tidak perlu link CDN di sini jika menggunakan npm -->
+</head>
+<body>
+<a href="#main-content" class="skip-link">Lewati ke Konten Utama</a>
+
+<header>
+    <h1>Aplikasi Berbagi Cerita</h1>
+    <nav>
+        <ul>
+            <li><a href="#">Beranda</a></li>
+            <li><a href="#add-story">Tambah Cerita</a></li>
+            <span id="navAuthContainer">
+                <li><a href="#login">Login</a></li>
+                <li><a href="#register">Register</a></li>
+            </span>
+        </ul>
+    </nav>
+</header>
+
+<main id="main-content">
+    <p>Memuat aplikasi...</p>
+</main>
+
+<footer>
+    <p>&copy; 2025 Aplikasi Berbagi Cerita Anda by Nama Anda</p>
+</footer>
+<!-- Skrip akan diinjeksi oleh Webpack -->
+<!-- <script src="app.bundle.js"></script> -->
+</body>
+</html>
