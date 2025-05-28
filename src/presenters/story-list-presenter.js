@@ -1,61 +1,94 @@
 // src/presenters/story-list-presenter.js
-import { getAllStoriesFromDB, saveStoriesToDB } from '../utils/indexeddb-helper.js'; // <-- Impor ini
+// Impor fungsi delete dari indexeddb-helper
+import { getAllStoriesFromDB, saveStoryToDB, getStoryByIdFromDB, deleteStoryFromDB } from '../utils/indexeddb-helper.js';
+import { StoryModel } from '../models/story-model.js';
 
 export class StoryListPresenter {
   constructor(model, view) {
     this.model = model;
     this.view = view;
+    this.stories = [];
+    this.savedStoryIds = new Set(); // Tambahkan Set untuk melacak ID tersimpan
   }
 
   async loadStories() {
     try {
       this.view.showLoading();
       let stories;
-      if (navigator.onLine) { // Cek apakah online
-        console.log('Online, mencoba mengambil cerita dari API...');
-        try {
-          stories = await this.model.getAllStories();
-          if (stories && stories.length > 0) {
-            await saveStoriesToDB(stories); // Simpan ke IndexedDB jika berhasil dari API
-            console.log('Cerita dari API berhasil disimpan ke IndexedDB.');
-          } else {
-            console.log('Tidak ada cerita baru dari API atau API mengembalikan array kosong.');
-            // Jika API mengembalikan kosong, coba ambil dari cache sebagai fallback
-            stories = await getAllStoriesFromDB();
-            if (stories && stories.length > 0) {
-              console.log('Menampilkan cerita dari IndexedDB karena API kosong.');
-            } else {
-              console.log('Tidak ada cerita di API maupun di IndexedDB.');
-            }
-          }
-          this.view.renderStories(stories);
-        } catch (apiError) {
-          console.warn('Gagal mengambil cerita dari API:', apiError.message, 'Mencoba memuat dari IndexedDB...');
-          stories = await getAllStoriesFromDB();
-          if (stories && stories.length > 0) {
-            console.log('Cerita berhasil dimuat dari IndexedDB setelah API gagal.');
-            this.view.renderStories(stories);
-          } else {
-            // Tidak ada di API dan tidak ada di IndexedDB
-            throw new Error('Gagal mengambil cerita dari API dan tidak ada data di cache lokal.');
-          }
-        }
-      } else { // Jika offline
-        console.log('Offline, mencoba memuat cerita dari IndexedDB...');
-        stories = await getAllStoriesFromDB();
-        if (stories && stories.length > 0) {
-          console.log('Cerita berhasil dimuat dari IndexedDB dalam mode offline.');
-          this.view.renderStories(stories);
-        } else {
-          // Offline dan tidak ada di IndexedDB
-          throw new Error('Anda sedang offline dan tidak ada cerita yang tersimpan di cache lokal.');
-        }
+      this.savedStoryIds.clear(); // Bersihkan Set setiap kali load
+
+      try {
+        const savedStories = await getAllStoriesFromDB(); // Ambil dari DB
+        savedStories.forEach(story => this.savedStoryIds.add(story.id));
+        console.log(`${savedStories.length} cerita ditemukan di IndexedDB.`);
+      } catch (dbError) {
+        console.warn("Gagal mengambil cerita dari IndexedDB:", dbError);
       }
+
+      if (navigator.onLine) {
+        console.log('Online, mengambil dari API...');
+        try {
+          stories = await this.model.getAllStories(); // Ambil dari API
+          this.stories = stories && stories.length > 0 ? stories : await getAllStoriesFromDB();
+        } catch (apiError) {
+          console.warn('Gagal dari API:', apiError.message, 'Memuat dari DB...');
+          this.stories = await getAllStoriesFromDB();
+        }
+      } else {
+        console.log('Offline, memuat dari DB...');
+        this.stories = await getAllStoriesFromDB();
+      }
+
+      if (this.stories && this.stories.length > 0) {
+        this.view.renderStories(this.stories, this.savedStoryIds); // Kirim ID tersimpan ke view
+      } else if (!navigator.onLine) {
+        this.view.renderErrorMessage('Anda offline dan tidak ada cerita tersimpan.');
+      } else {
+        this.view.renderStories([], this.savedStoryIds);
+      }
+
     } catch (error) {
       console.error('Error memuat cerita:', error);
-      this.view.renderErrorMessage(error.message || 'Terjadi kesalahan saat memuat cerita.');
+      this.view.renderErrorMessage(error.message || 'Terjadi kesalahan.');
     } finally {
       this.view.hideLoading();
+    }
+  }
+
+  async handleSaveStoryForOffline(storyId) {
+    try {
+      let storyToSave = this.stories.find(story => story.id === storyId);
+      if (!storyToSave && navigator.onLine) {
+        storyToSave = await this.model.getStoryDetailById(storyId); // Ambil detail jika perlu
+      }
+
+      if (storyToSave) {
+        await saveStoryToDB(storyToSave); // Simpan ke DB
+        this.savedStoryIds.add(storyId); // Tambahkan ke Set
+        this.view.showMessage(`Cerita berhasil disimpan.`, 'success');
+        this.view.updateStoryButtons(storyId, true); // Update tombol ke 'Hapus'
+      } else { throw new Error('Cerita tidak ditemukan.'); }
+    } catch (error) {
+      console.error('Gagal menyimpan:', error);
+      this.view.showMessage('Gagal menyimpan cerita.', 'error');
+      this.view.updateStoryButtons(storyId, false); // Kembalikan tombol ke 'Simpan'
+    }
+  }
+
+  // METODE BARU untuk menghapus
+  async handleDeleteStoryFromOffline(storyId) {
+    try {
+      await deleteStoryFromDB(storyId); // Panggil fungsi hapus
+      this.savedStoryIds.delete(storyId); // Hapus dari Set
+      this.view.showMessage('Cerita berhasil dihapus dari penyimpanan offline.', 'success');
+      this.view.updateStoryButtons(storyId, false); // Update tombol ke 'Simpan'
+      // Opsional: Jika Anda ingin daftar cerita langsung refresh untuk menyembunyikan
+      // item (jika ini halaman 'Saved Stories'), Anda bisa panggil loadStories lagi.
+      // Tapi jika ini daftar semua cerita, hanya mengubah tombol sudah cukup.
+    } catch (error) {
+      console.error('Gagal menghapus cerita offline:', error);
+      this.view.showMessage('Gagal menghapus cerita. Coba lagi.', 'error');
+      this.view.updateStoryButtons(storyId, true); // Kembalikan tombol ke 'Hapus' jika gagal
     }
   }
 }

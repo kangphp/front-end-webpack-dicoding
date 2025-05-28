@@ -1,4 +1,3 @@
-// src/manifest.json
 {
   "name": "Aplikasi Berbagi Cerita Anda",
   "short_name": "CeritaKita",
@@ -29,22 +28,6 @@
       "description": "Bagikan cerita baru Anda ke dunia",
       "url": "/index.html#add-story?source=pwa_shortcut",
       "icons": [{ "src": "assets/images/icon-shortcut-add-96x96.png", "sizes": "96x96" }]
-    }
-  ],
-  "screenshots": [
-    {
-      "src": "assets/images/screenshot-mobile.png",
-      "sizes": "540x720",
-      "type": "image/png",
-      "form_factor": "narrow",
-      "label": "Tampilan Mobile Aplikasi CeritaKita"
-    },
-    {
-      "src": "assets/images/screenshot-desktop.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide",
-      "label": "Tampilan Desktop Aplikasi CeritaKita"
     }
   ]
 }

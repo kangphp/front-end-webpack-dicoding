@@ -2,12 +2,13 @@
 import { StoryModel } from '../models/story-model.js';
 import { StoryListPresenter } from '../presenters/story-list-presenter.js';
 import { storyItemTemplate, storyListContainerTemplate } from './templates.js';
-import MapDisplay from '../utils/map-helper.js'; // Helper untuk peta
+import MapDisplay from '../utils/map-helper.js';
+import L from 'leaflet';
 
 export default class StoryListView {
   constructor(mainElement) {
     this.mainElement = mainElement;
-    this.mapDisplay = null; // Akan diinisialisasi di afterRender
+    this.mapDisplay = null;
   }
 
   async render() {
@@ -16,26 +17,81 @@ export default class StoryListView {
     this.loadingIndicator = this.mainElement.querySelector('#loadingIndicator');
     this.errorMessageElement = this.mainElement.querySelector('#errorMessage');
     this.mainMapContainer = this.mainElement.querySelector('#mainStoryMap');
+    this.messageArea = this.mainElement.querySelector('#storyListMessage');
   }
 
   async afterRender() {
     const model = new StoryModel();
     this.presenter = new StoryListPresenter(model, this);
 
-    // Inisialisasi peta utama (Kriteria Wajib 3)
-    this.mapDisplay = new MapDisplay('mainStoryMap'); // ID kontainer peta utama
+    this.mapDisplay = new MapDisplay('mainStoryMap');
     await this.mapDisplay.initMap();
 
+    this._initEventListeners();
     await this.presenter.loadStories();
   }
 
-  renderStories(stories) {
-    this.storyListContainer.innerHTML = '';
-    if (this.mapDisplay && typeof this.mapDisplay.clearMarkers === 'function') {
-      this.mapDisplay.clearMarkers();
-    } else {
-      console.warn('StoryListView renderStories: mapDisplay.clearMarkers tidak bisa dipanggil.');
+  _initEventListeners() {
+    this.storyListContainer.addEventListener('click', (event) => {
+      const target = event.target;
+      const storyId = target.dataset.storyId;
+
+      if (!storyId || !this.presenter || target.disabled) {
+        return; // Abaikan jika tidak ada ID, presenter, atau tombol disabled
+      }
+
+      event.preventDefault(); // Cegah aksi default
+
+      if (target.classList.contains('save-offline-button')) {
+        console.log(`Tombol Simpan Offline diklik untuk ID: ${storyId}`);
+        target.textContent = 'Menyimpan...';
+        target.disabled = true;
+        this.presenter.handleSaveStoryForOffline(storyId); // Panggil presenter simpan
+      }
+      // Tambahkan listener untuk tombol hapus
+      else if (target.classList.contains('delete-offline-button')) {
+        console.log(`Tombol Hapus Offline diklik untuk ID: ${storyId}`);
+        if (confirm('Anda yakin ingin menghapus cerita ini dari penyimpanan offline?')) {
+          target.textContent = 'Menghapus...';
+          target.disabled = true;
+          this.presenter.handleDeleteStoryFromOffline(storyId); // Panggil presenter hapus
+        }
+      }
+    });
+  }
+
+  // Modifikasi updateSaveButtonState menjadi updateStoryButtons
+  updateStoryButtons(storyId, isSaved) {
+    const saveButton = this.storyListContainer.querySelector(`.save-offline-button[data-story-id="${storyId}"]`);
+    const deleteButton = this.storyListContainer.querySelector(`.delete-offline-button[data-story-id="${storyId}"]`);
+
+    if (saveButton && deleteButton) {
+      saveButton.style.display = isSaved ? 'none' : 'inline-block';
+      saveButton.textContent = 'Simpan Offline';
+      saveButton.disabled = false;
+
+      deleteButton.style.display = isSaved ? 'inline-block' : 'none';
+      deleteButton.textContent = 'Hapus Offline';
+      deleteButton.disabled = false;
     }
+  }
+
+  showMessage(message, type = 'info') {
+    if (this.messageArea) {
+      this.messageArea.textContent = message;
+      this.messageArea.className = `message-area ${type}`;
+      this.messageArea.style.display = 'block';
+      setTimeout(() => {
+        this.messageArea.style.display = 'none';
+      }, 4000);
+    } else {
+      console.log(`Message (${type}): ${message}`);
+    }
+  }
+
+  renderStories(stories, savedIds = new Set()) {
+    this.storyListContainer.innerHTML = '';
+    if (this.mapDisplay) this.mapDisplay.clearMarkers();
 
     if (!stories || stories.length === 0) {
       this.storyListContainer.innerHTML = '<p>Belum ada cerita untuk ditampilkan.</p>';
@@ -45,122 +101,40 @@ export default class StoryListView {
     const storyLocationsForMainMap = [];
     stories.forEach(story => {
       const storyElementWrapper = document.createElement('div');
-      // Isi wrapper dengan template item, yang mencakup <div id="map-${story.id}">
-      storyElementWrapper.innerHTML = storyItemTemplate(story);
+      const isSaved = savedIds.has(story.id);
+      storyElementWrapper.innerHTML = storyItemTemplate(story, isSaved); // Gunakan template
       const storyElement = storyElementWrapper.firstElementChild;
       this.storyListContainer.appendChild(storyElement);
 
-      // Inisialisasi peta kecil untuk item ini JIKA ADA LOKASI
-      if (story.lat != null && story.lon != null) { // Cek null atau undefined
+      // Logika Peta (tetap sama)
+      if (story.lat != null && story.lon != null) {
         const lat = parseFloat(story.lat);
         const lon = parseFloat(story.lon);
-
         if (!isNaN(lat) && !isNaN(lon)) {
-          storyLocationsForMainMap.push({ // Tambahkan ke lokasi untuk peta utama
-            lat: lat,
-            lon: lon,
-            popupContent: `<b>${story.name}</b><br>${story.description.substring(0, 50)}...`,
-            storyId: story.id
-          });
-
-          // Cari elemen div peta untuk item ini
-          const itemMapContainerId = `map-${story.id}`;
-          const itemMapContainer = storyElement.querySelector(`#${itemMapContainerId}`); // Cari di dalam elemen cerita yang baru ditambahkan
-
+          storyLocationsForMainMap.push({ lat, lon, popupContent: `<b>${story.name}</b>`, storyId: story.id });
+          const itemMapContainer = storyElement.querySelector(`#map-${story.id}`);
           if (itemMapContainer && typeof L !== 'undefined') {
             try {
-              console.log(`Menginisialisasi peta untuk item: ${itemMapContainerId}`);
-              // Buat instance peta baru untuk item ini
-              const itemMap = L.map(itemMapContainerId, {
-                scrollWheelZoom: false, // Nonaktifkan zoom scroll agar tidak mengganggu scroll halaman
-                dragging: false,        // Nonaktifkan dragging
-                touchZoom: false,
-                doubleClickZoom: false,
-                boxZoom: false,
-                keyboard: false,
-                tap: false
-              }).setView([lat, lon], 13); // Zoom level 13 atau sesuai
-
-              L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OSM', // Attribution singkat untuk peta kecil
-                maxZoom: 18
-              }).addTo(itemMap);
-
-              L.marker([lat, lon]).addTo(itemMap)
-                .bindPopup(`<b>${story.name}</b>`); // Popup sederhana untuk peta item
-
-              // Ganti placeholder "Memuat peta..." jika berhasil
-              // Ini tidak perlu jika L.map berhasil, karena ia akan mengisi div
-            } catch (e) {
-              console.error(`Gagal menginisialisasi peta untuk item ${itemMapContainerId}:`, e);
-              if (itemMapContainer) itemMapContainer.innerHTML = 'Peta gagal dimuat.';
-            }
-          } else if (typeof L === 'undefined') {
-            console.warn(`Leaflet (L) tidak terdefinisi, peta item ${itemMapContainerId} tidak bisa dibuat.`);
-            if (itemMapContainer) itemMapContainer.innerHTML = 'Library peta hilang.';
-          } else if (!itemMapContainer) {
-            console.warn(`Container peta item ${itemMapContainerId} tidak ditemukan.`);
+              const itemMap = L.map(itemMapContainer, { scrollWheelZoom: false, dragging: false, touchZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false, tap: false }).setView([lat, lon], 13);
+              L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM' }).addTo(itemMap);
+              L.marker([lat, lon]).addTo(itemMap).bindPopup(`<b>${story.name}</b>`);
+            } catch (e) { if (itemMapContainer) itemMapContainer.innerHTML = 'Peta Gagal.'; }
           }
-        } else {
-          console.warn(`Koordinat tidak valid untuk cerita ID ${story.id}: lat=${story.lat}, lon=${story.lon}`);
-          const itemMapContainer = storyElement.querySelector(`#map-${story.id}`);
-          if (itemMapContainer) itemMapContainer.innerHTML = 'Lokasi tidak valid.';
-        }
-      } else {
-        // Jika tidak ada lat/lon, pastikan placeholder "Memuat peta..." diganti
-        const itemMapContainer = storyElement.querySelector(`#map-${story.id}`);
-        if (itemMapContainer) { // Cek apakah div peta ada di template meskipun tidak ada lat/lon
-          // Jika template Anda selalu menyertakan div map, maka ganti pesannya
-          itemMapContainer.innerHTML = 'Tidak ada data lokasi.';
-          itemMapContainer.style.display = 'none'; // Sembunyikan div jika tidak ada peta
-        }
-      }
+        } else { const itemMapContainer = storyElement.querySelector(`#map-${story.id}`); if (itemMapContainer) itemMapContainer.innerHTML = 'Lokasi Tidak Valid.'; }
+      } else { const itemMapContainer = storyElement.querySelector(`#map-${story.id}`); if (itemMapContainer) { itemMapContainer.innerHTML = 'Tidak Ada Lokasi.'; itemMapContainer.style.display = 'none'; } }
     });
 
-    // Kelola peta utama
-    if (storyLocationsForMainMap.length > 0) {
-      if (this.mapDisplay && typeof this.mapDisplay.addMarkers === 'function') {
-        this.mapDisplay.addMarkers(storyLocationsForMainMap);
-      } else {
-        console.warn('StoryListView renderStories: mapDisplay.addMarkers tidak bisa dipanggil untuk peta utama.');
-      }
-
-      if (this.mapDisplay && typeof this.mapDisplay.fitBoundsToMarkers === 'function') {
-        this.mapDisplay.fitBoundsToMarkers();
-      } else {
-        console.warn('StoryListView renderStories: mapDisplay.fitBoundsToMarkers tidak bisa dipanggil untuk peta utama.');
-      }
-    } else {
-      if (this.mainMapContainer) {
-        this.mainMapContainer.innerHTML = '<p>Tidak ada cerita dengan data lokasi untuk ditampilkan di peta utama.</p>';
-      }
+    if (storyLocationsForMainMap.length > 0 && this.mapDisplay) {
+      this.mapDisplay.addMarkers(storyLocationsForMainMap);
+      this.mapDisplay.fitBoundsToMarkers();
+    } else if (this.mainMapContainer) {
+      this.mainMapContainer.innerHTML = '<p>Tidak ada cerita dengan lokasi.</p>';
     }
   }
 
-  showLoading() {
-    if (this.loadingIndicator) this.loadingIndicator.style.display = 'block';
-    if (this.errorMessageElement) this.errorMessageElement.style.display = 'none';
-  }
-
-  hideLoading() {
-    if (this.loadingIndicator) this.loadingIndicator.style.display = 'none';
-  }
-
-  renderErrorMessage(message) {
-    this.hideLoading();
-    if (this.errorMessageElement) {
-      this.errorMessageElement.textContent = message;
-      this.errorMessageElement.style.display = 'block';
-    }
-    if (this.storyListContainer) this.storyListContainer.innerHTML = ''; // Kosongkan daftar cerita
-    if (this.mainMapContainer) this.mainMapContainer.innerHTML = `<p>Gagal memuat data: ${message}</p>`;
-  }
-
-  unmount() {
-    // Bersihkan event listener atau sumber daya lain jika ada
-    if (this.mapDisplay) {
-      this.mapDisplay.destroyMap(); // Metode untuk membersihkan peta di helper
-    }
-    console.log('StoryListView unmounted');
-  }
+  // Metode lain (showLoading, hideLoading, renderErrorMessage, unmount) tetap sama...
+  showLoading() { if (this.loadingIndicator) this.loadingIndicator.style.display = 'block'; if (this.errorMessageElement) this.errorMessageElement.style.display = 'none'; }
+  hideLoading() { if (this.loadingIndicator) this.loadingIndicator.style.display = 'none'; }
+  renderErrorMessage(message) { this.hideLoading(); if (this.errorMessageElement) { this.errorMessageElement.textContent = message; this.errorMessageElement.style.display = 'block'; } if (this.storyListContainer) this.storyListContainer.innerHTML = ''; if (this.mainMapContainer) this.mainMapContainer.innerHTML = `<p>Gagal: ${message}</p>`; }
+  unmount() { if (this.mapDisplay) this.mapDisplay.destroyMap(); console.log('StoryListView unmounted'); }
 }

@@ -1,1 +1,2 @@
-MAP_API_KEY=
+APP_URL=https://vermillion-centaur-3d02ff.netlify.app/
+MAP_SERVICE_API_KEY=<api_key>

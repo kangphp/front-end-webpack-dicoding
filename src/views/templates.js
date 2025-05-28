@@ -1,7 +1,7 @@
 // src/views/templates.js
 
 // Template untuk satu item cerita dalam daftar
-export const storyItemTemplate = (story) => `
+export const storyItemTemplate = (story, isSaved = false) => `
   <article class="story-item" id="story-${story.id}">
     <figure class="story-figure">
       <img src="${story.photoUrl}" alt="Gambar untuk cerita '${story.description.substring(0, 30)}...' oleh ${story.name}" class="story-image">
@@ -11,21 +11,35 @@ export const storyItemTemplate = (story) => `
       <p class="story-description">${story.description}</p>
       <p class="story-date">Diunggah: ${new Date(story.createdAt).toLocaleDateString('id-ID', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
       ${story.lat && story.lon ? `<div id="map-${story.id}" class="story-item-map" style="height: 150px; width: 100%; margin-top: 10px;" data-lat="${story.lat}" data-lon="${story.lon}" data-popup="${story.name}: ${story.description.substring(0,20)}...">Memuat peta...</div>` : '<p class="no-location">Tidak ada data lokasi.</p>'}
-      <!-- Kriteria Wajib 3: Minimal satu data gambar dan tiga data teks -->
+      
+      <button 
+        class="save-offline-button" 
+        data-story-id="${story.id}" 
+        style="${isSaved ? 'display:none;' : ''}">
+        Simpan Offline
+      </button>
+
+      <button 
+        class="delete-offline-button" 
+        data-story-id="${story.id}" 
+        style="${!isSaved ? 'display:none;' : ''}">
+        Hapus Offline
+      </button>
+
     </div>
   </article>
 `;
 
-// Template untuk halaman daftar cerita secara keseluruhan
+// Template lain (storyListContainerTemplate, addStoryFormTemplate, etc.) tetap sama seperti sebelumnya...
+
 export const storyListContainerTemplate = () => `
   <section class="story-list-page">
     <h2>Semua Cerita</h2>
+    <div id="storyListMessage" class="message-area" style="display:none; margin-bottom: 15px;"></div>
     <div id="storyList" class="story-list-container">
-      <!-- Item cerita akan dimasukkan di sini -->
-    </div>
+      </div>
     <div id="loadingIndicator" class="loading" style="display:none;">Memuat cerita...</div>
     <div id="errorMessage" class="error-message" style="display:none;"></div>
-    <!-- Kriteria Wajib 3: Peta digital untuk menunjukkan lokasi data (bisa satu peta besar di sini) -->
     <h3>Peta Lokasi Cerita</h3>
     <div id="mainStoryMap" style="height: 400px; width: 100%; margin-top: 20px; background-color: #eee;">
         Memuat peta utama...
@@ -33,7 +47,6 @@ export const storyListContainerTemplate = () => `
   </section>
 `;
 
-// Template untuk formulir tambah cerita baru
 export const addStoryFormTemplate = () => `
   <section class="add-story-page">
     <h2>Bagikan Cerita Baru Anda</h2>

@@ -288,10 +288,10 @@ footer {
 
 /* Transisi untuk konten baru yang masuk */
 ::view-transition-new(root) {
-    animation-name: customFadeIn;
-    animation-duration: 250ms;
-    animation-timing-function: cubic-bezier(0.4, 0.0, 0.2, 1); /* Easing standar untuk masuk */
-    animation-fill-mode: forwards;
+    /*animation-name: customFadeIn;*/
+    /*animation-duration: 250ms;*/
+    /*animation-timing-function: cubic-bezier(0.4, 0.0, 0.2, 1); !* Easing standar untuk masuk *!*/
+    /*animation-fill-mode: forwards;*/
     /* animation-delay: 50ms; */ /* Hapus atau sesuaikan delay jika ada, kadang tidak perlu */
 }
 
