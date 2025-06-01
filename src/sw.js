@@ -1,150 +1,137 @@
 // src/sw.js
-const CACHE_NAME = 'ceritakita-manual-cache-v1'; // Beri nama cache baru
-// PERHATIAN: Jika output.filename di webpack.config.js menggunakan [contenthash],
-// maka 'app.bundle.js' dan nama file lain yang di-bundle akan berubah
-// dan tidak bisa di-precache secara statis seperti ini.
-// Untuk development atau jika tidak pakai contenthash, ini bisa jalan.
-const urlsToCache = [ //
-  '/', //
-  '/index.html', //
-  // Jika Anda menggunakan contenthash, Anda TIDAK BISA hardcode nama bundle di sini.
-  // '/app.bundle.js', // Contoh: jika nama bundle statis
-  // '/vendors~app.bundle.js', // Contoh
-  // '/runtime~app.bundle.js', // Contoh
-  '/manifest.json', //
-  '/styles/main.css', // Jika ini file statis yang disalin, bukan hasil bundle CSS webpack
-  '/assets/images/icon-192x192.png', //
-  '/assets/images/icon-512x512.png', //
-  '/assets/favicon.ico', //
-  // Pastikan semua path ini benar dan file-nya ada di folder 'dist'
-];
+import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+import { registerRoute } from 'workbox-routing';
+import { StaleWhileRevalidate, CacheFirst, NetworkFirst } from 'workbox-strategies';
+import { CacheableResponsePlugin } from 'workbox-cacheable-response';
+import { ExpirationPlugin } from 'workbox-expiration';
 
-self.addEventListener('install', (event) => { //
-  console.log('Service Worker (Manual): Installing...'); //
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME) //
-      .then((cache) => {
-        console.log('Service Worker (Manual): Caching app shell'); //
-        // Coba cache semua URL. Jika salah satu gagal (misal karena contenthash), install akan gagal.
-        return cache.addAll(urlsToCache.map(url => new Request(url, { cache: 'reload' }))) //
-          .catch(error => {
-            console.error('Service Worker (Manual): Gagal precache salah satu URL:', error);
-            // Penting untuk menangani error ini, mungkin dengan tidak memasukkan file dinamis ke urlsToCache
-            // Atau memastikan semua file di urlsToCache memang ada dan bisa diakses.
-          });
-      })
-      .then(() => {
-        console.log('Service Worker (Manual): Install complete.'); //
-        self.skipWaiting(); // Aktifkan SW baru segera
-      })
-      .catch(error => {
-        console.error('Service Worker (Manual): Failed to cache app shell during install:', error); //
-      })
+    (async () => {
+      if (self.registration.navigationPreload) {
+        await self.registration.navigationPreload.enable();
+        console.log('Service Worker (Workbox): Navigation preload enabled!');
+      }
+    })()
   );
+  console.log('Service Worker (Workbox): Activated!');
+  event.waitUntil(self.clients.claim());
 });
 
-self.addEventListener('activate', (event) => { //
-  console.log('Service Worker (Manual): Activating...'); //
-  event.waitUntil(
-    caches.keys().then((cacheNames) => { //
-      return Promise.all(
-        cacheNames.map((cacheName) => { //
-          if (cacheName !== CACHE_NAME) { //
-            console.log('Service Worker (Manual): Deleting old cache:', cacheName); //
-            return caches.delete(cacheName); //
-          }
-        })
-      );
-    }).then(() => {
-      console.log('Service Worker (Manual): Activation complete.'); //
-      return self.clients.claim(); // Ambil kontrol halaman
-    })
-  );
-});
+precacheAndRoute(self.__WB_MANIFEST || []);
 
-self.addEventListener('fetch', (event) => { //
-  if (event.request.method !== 'GET') return; //
+cleanupOutdatedCaches();
 
-  // Contoh: Strategi Cache First untuk aset lokal & peta
-  if (event.request.url.startsWith(self.location.origin) ||
-    event.request.url.includes('tile.openstreetmap.org') ||
-    event.request.url.includes('server.arcgisonline.com')) {
-    event.respondWith(
-      caches.match(event.request) //
-        .then((response) => {
-          if (response) { return response; } //
-          return fetch(event.request).then( //
-            (networkResponse) => {
-              if (networkResponse && networkResponse.status === 200) { //
-                const responseToCache = networkResponse.clone(); //
-                caches.open(CACHE_NAME) //
-                  .then(cache => { cache.put(event.request, responseToCache); }); //
-              }
-              return networkResponse; //
-            }
-          ).catch(error => { //
-            console.error('SW Fetch Error:', event.request.url, error);
-            // Mungkin tampilkan halaman offline fallback di sini
-          });
-        })
-    );
-  } else if (event.request.url.startsWith('https://story-api.dicoding.dev')) {
-    // Contoh: Strategi Network First untuk API
-    event.respondWith(
-      fetch(event.request)
-        .then(networkResponse => {
-          if (networkResponse && networkResponse.status === 200) {
-            const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME) // Anda mungkin ingin cache API yang berbeda
-              .then(cache => { cache.put(event.request, responseToCache); });
-          }
-          return networkResponse;
-        })
-        .catch(() => {
-          // Jika network gagal, coba ambil dari cache
-          return caches.match(event.request);
-        })
-    );
-  } else {
-    event.respondWith(fetch(event.request)); // Biarkan request lain lolos
-  }
-});
+registerRoute(
+  ({ request }) => request.mode === 'navigate',
+  new NetworkFirst({
+    cacheName: 'pages-cache-v1',
+    plugins: [
+      new CacheableResponsePlugin({
+        statuses: [0, 200],
+      }),
+    ],
+  })
+);
 
-// --- PUSH NOTIFICATION HANDLERS (Tetap sama) ---
-self.addEventListener('push', (event) => { //
-  console.log('Service Worker: Push Received.'); //
-  let notificationData;
-  try { notificationData = event.data.json(); } catch (e) { notificationData = { title: 'Notifikasi Baru', body: event.data.text() }; } //
-  const title = notificationData.title || 'Aplikasi CeritaKita'; //
-  const body = notificationData.body || 'Anda memiliki pesan baru.'; //
+registerRoute(
+  ({ request }) =>
+    request.destination === 'style' ||
+    request.destination === 'script' ||
+    request.destination === 'worker',
+  new StaleWhileRevalidate({
+    cacheName: 'static-resources-cache-v1',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+    ],
+  })
+);
 
-  const options = { //
-    body: body,
-    icon: '/assets/images/icon-192x192.png', // <-- Hapus atau komentari baris ini
-    // badge: '/assets/images/badge-72x72.png', // <-- Hapus atau komentari baris ini juga jika ada
-    data: {
-      url: notificationData.url || '/', //
-    },
-    actions: notificationData.actions || [] //
-  };
-  console.log('Service Worker: Attempting to show notification with options (no icon):', options);
+registerRoute(
+  ({ request }) => request.destination === 'image',
+  new CacheFirst({
+    cacheName: 'images-cache-v1',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({
+        maxEntries: 60,
+        maxAgeSeconds: 30 * 24 * 60 * 60, // 30 hari
+        purgeOnQuotaError: true,
+      }),
+    ],
+  })
+);
 
-  event.waitUntil(
-    self.registration.showNotification(title, options) //
-      .then(() => console.log('Service Worker: Notification (no icon) shown successfully.'))
-      .catch(err => console.error('Service Worker: Error showing notification (no icon):', err))
-  );
-  // event.waitUntil(self.registration.showNotification(title, options)); //
-});
+registerRoute(
+  ({ request }) => request.destination === 'font',
+  new CacheFirst({
+    cacheName: 'fonts-cache-v1',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({
+        maxEntries: 30,
+        maxAgeSeconds: 60 * 24 * 60 * 60, // 60 hari
+      }),
+    ],
+  })
+);
 
-self.addEventListener('notificationclick', (event) => { //
-  console.log('Service Worker: Notification click Received.'); //
-  event.notification.close(); //
-  const urlToOpen = event.notification.data.url || '/'; //
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => { //
-      for (const client of clientList) { if (client.url === urlToOpen && 'focus' in client) { return client.focus(); } } //
-      if (clients.openWindow) { return clients.openWindow(urlToOpen); } //
-    })
-  );
+registerRoute(
+  ({ url }) => url.href.startsWith('https://story-api.dicoding.dev'),
+  new NetworkFirst({
+    cacheName: 'dicoding-api-cache-v1',
+    networkTimeoutSeconds: 5,
+    plugins: [
+      new CacheableResponsePlugin({
+        statuses: [0, 200],
+      }),
+      new ExpirationPlugin({
+        maxEntries: 50,
+        maxAgeSeconds: 24 * 60 * 60, // 1 hari
+      }),
+    ],
+  })
+);
+
+registerRoute(
+  ({ url }) => url.href.includes('tile.openstreetmap.org'),
+  new CacheFirst({
+    cacheName: 'osm-tiles-cache-v1',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({
+        maxEntries: 200,
+        maxAgeSeconds: 30 * 24 * 60 * 60, // 30 hari
+        purgeOnQuotaError: true,
+      }),
+    ],
+  })
+);
+
+registerRoute(
+  ({ url }) => url.href.includes('server.arcgisonline.com'),
+  new CacheFirst({
+    cacheName: 'esri-tiles-cache-v1',
+    plugins: [
+      new CacheableResponsePlugin({ statuses: [0, 200] }),
+      new ExpirationPlugin({
+        maxEntries: 200,
+        maxAgeSeconds: 30 * 24 * 60 * 60, // 30 hari
+        purgeOnQuotaError: true,
+      }),
+    ],
+  })
+);
+
+// Impor push-handler.js
+try {
+  importScripts('./push-handler.js');
+  console.log('Service Worker (Workbox): push-handler.js loaded successfully.');
+} catch (error) {
+  console.error('Service Worker (Workbox): Failed to load push-handler.js:', error);
+}
+
+self.addEventListener('install', () => {
+  console.log('Service Worker (Workbox): Installing & skipping waiting.');
+  self.skipWaiting();
 });
