@@ -4,16 +4,21 @@ import StoryListView from './views/story-list-view.js';
 import AddStoryView from './views/add-story-view.js';
 import LoginView from './views/login-view.js';
 import RegisterView from './views/register-view.js';
+import SavedStoryListView from './views/saved-story-list-view.js';
 import NotFoundView from './views/not-found-view.js';
 import {
   getAuthToken, getAuthUserName, removeAuthToken, VAPID_PUBLIC_KEY,
 } from './api/story-api-config.js';
 import { StoryModel } from './models/story-model.js';
 import './styles/main.css';
+// eslint-disable-next-line import/order
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+// eslint-disable-next-line import/order
 import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png';
+// eslint-disable-next-line import/order
 import iconUrl from 'leaflet/dist/images/marker-icon.png';
+// eslint-disable-next-line import/order
 import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
 // 🚧 Pastikan ini sudah diimpor:
 import { Workbox } from 'workbox-window';
@@ -29,6 +34,7 @@ const routes = {
   '': StoryListView,
   '#stories': StoryListView,
   '#add-story': AddStoryView,
+  '#saved-stories': SavedStoryListView,
   '#login': LoginView,
   '#register': RegisterView,
   '*': NotFoundView,
