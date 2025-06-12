@@ -90,10 +90,10 @@ module.exports = (env, argv) => {
       new InjectManifest({
         swSrc: './src/sw.js',
         swDest: 'sw.js',
-        additionalManifestEntries: [
-          { url: '/manifest.json', revision: null },
-
-        ],
+        // additionalManifestEntries: [
+        //   { url: '/manifest.json', revision: null },
+        //
+        // ],
         // Jika Anda ingin memastikan file yang disalin oleh CopyWebpackPlugin tercakup
         // dan tidak direferensikan di tempat lain, Anda bisa menggunakan globPatterns
         // Tapi ini bisa lebih kompleks. Biasanya, referensi dari index.html atau manifest.json cukup.
